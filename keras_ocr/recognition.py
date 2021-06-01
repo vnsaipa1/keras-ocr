@@ -163,14 +163,12 @@ def _transform(inputs):
     return transformed_image
 
 
-def CTCDecoder(probvalues):
-    def decoder(y_pred,probvalues):
+def CTCDecoder():
+    def decoder(y_pred):
         input_shape = tf.keras.backend.shape(y_pred)
         input_length = tf.ones(shape=input_shape[0]) * tf.keras.backend.cast(
             input_shape[1], 'float32')
-        Dec = tf.keras.backend.ctc_decode(y_pred, input_length)
-        unpadded=Dec[0][0]
-        probvalues.append(Dec[1])
+        unpadded = tf.keras.backend.ctc_decode(y_pred, input_length)[0][0]
         unpadded_shape = tf.keras.backend.shape(unpadded)
         padded = tf.pad(unpadded,
                         paddings=[[0, 0], [0, input_shape[1] - unpadded_shape[1]]],
@@ -289,8 +287,8 @@ def build_model(alphabet,
                            name='fc_12')(x)
     x = keras.layers.Lambda(lambda x: x[:, rnn_steps_to_discard:])(x)
     model = keras.models.Model(inputs=inputs, outputs=x)
-    probval=[]
-    prediction_model = keras.models.Model(inputs=inputs, outputs=CTCDecoder()(model.output,probvalues=probval))
+    
+    prediction_model = keras.models.Model(inputs=inputs, outputs=CTCDecoder()(model.output))
     labels = keras.layers.Input(name='labels', shape=[model.output_shape[1]], dtype='float32')
     label_length = keras.layers.Input(shape=[1])
     input_length = keras.layers.Input(shape=[1])
@@ -299,7 +297,7 @@ def build_model(alphabet,
             [labels, model.output, input_length, label_length])
     training_model = keras.models.Model(inputs=[model.input, labels, input_length, label_length],
                                         outputs=loss)
-    return backbone, model, training_model, prediction_model,probvalues
+    return backbone, model, training_model, prediction_model
 
 
 class Recognizer:
@@ -323,7 +321,7 @@ class Recognizer:
             alphabet = DEFAULT_ALPHABET
         self.alphabet = alphabet
         self.blank_label_idx = len(alphabet)
-        self.backbone, self.model, self.training_model, self.prediction_model,self.prob = build_model(
+        self.backbone, self.model, self.training_model, self.prediction_model = build_model(
             alphabet=alphabet, **build_params)
         if weights is not None:
             weights_dict = PRETRAINED_WEIGHTS[weights]
